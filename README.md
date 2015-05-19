@@ -11,7 +11,7 @@ your lookup index directory is `./dex-lookup`.
 
 1. Install Whoosh version 2.5. (Pokedex doesn't work with the latest version of whoosh)
 
-    $ pip install Whoosh==2.5.6
+        $ pip install Whoosh==2.5.6
 
 2. Run `python setup.py install`
 
@@ -24,11 +24,11 @@ your lookup index directory is `./dex-lookup`.
 
 4. Add hamper-pokedex to your `hamper.conf`
     
-    pokedex:
-        db: postgresql:///pokedex
-        lookup: ./dex-lookup
+        pokedex:
+            db: postgresql:///pokedex
+            lookup: ./dex-lookup
 
-    plugins:
-        - ...
-        - pokedex
-        - ...
+        plugins:
+            - ...
+            - pokedex
+            - ...
