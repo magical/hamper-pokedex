@@ -1,6 +1,8 @@
 Hamper-pokedex is a plugin for [hamper][] which allows you to look up facts
 about Pokémon.
 
+[![Build Status](https://travis-ci.org/magical/hamper-pokedex.svg?branch=master)](https://travis-ci.org/magical/hamper-pokedex)
+
 [hamper]: https://github.com/hamperbot/hamper
 
 Installation
