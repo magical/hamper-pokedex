@@ -1,4 +1,8 @@
 # coding: utf-8
+
+# Copyright 2015 Andrew Ekstedt
+# NO WARRANTY. See LICENSE for details.
+
 from hamper import interfaces
 import pokedex.db
 import pokedex.db.tables as t
