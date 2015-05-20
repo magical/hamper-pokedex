@@ -88,7 +88,7 @@ class Plugin(interfaces.ChatCommandPlugin):
         stat_text = u"{0} HP, {1}/{2} physical, {3}/{4} special, {5} speed".format(*stats)
         return u"#{0.id} {0.name}, the {0.genus} Pokémon. {types}-type. {stats}; {total} total.".format(
             species, form, types=types, stats=stat_text, total=sum(stats))
-    
+
     def format_ability(self, ability):
         return u"{0.name}, an ability. {0.short_effect}".format(ability)
 
@@ -122,7 +122,7 @@ class Plugin(interfaces.ChatCommandPlugin):
     def format_type(self, type):
         return u"{0.name}, a type.".format(type)
 
-    
+
     class Dex(interfaces.Command):
         name = 'pokedex'
         regex = '(?:dex|pokedex)(?: (.*)|$)'
@@ -133,7 +133,7 @@ class Plugin(interfaces.ChatCommandPlugin):
 
             query = groups[0].strip()
             self.plugin.do_lookup(bot, comm, query)
-            
+
     class Reindex(interfaces.Command):
         name = 'reindex'
         regex = 'reindex'
