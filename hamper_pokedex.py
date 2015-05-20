@@ -9,6 +9,16 @@ __all__ = ('Plugin',)
 class Plugin(interfaces.ChatCommandPlugin):
     name = 'pokedex'
 
+    valid_types = [
+        u'pokemon_species',
+        u'pokemon_form',
+        u'ability',
+        u'item',
+        u'move',
+        u'nature',
+        u'type',
+    ]
+
     def setup(self, loader):
         interfaces.ChatCommandPlugin.setup(self, loader)
 
@@ -26,7 +36,7 @@ class Plugin(interfaces.ChatCommandPlugin):
         if type(query) is str:
             query = query.decode('utf-8', 'replace')
         try:
-            results = self.lookup.lookup(query)
+            results = self.lookup.lookup(query, valid_types=self.valid_types)
         except pokedex.lookup.UninitializedIndex.UninitializedIndexError:
             return bot.reply(comm, u"error: the lookup index does not exist. type !reindex to create it.")
 
