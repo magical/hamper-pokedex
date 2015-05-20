@@ -3,15 +3,12 @@ from hamper import interfaces
 import pokedex.db
 import pokedex.db.tables as t
 import pokedex.lookup
-import sqlalchemy
-from sqlalchemy import orm
-
-Session = orm.sessionmaker()
 
 __all__ = ('Plugin',)
 
 class Plugin(interfaces.ChatCommandPlugin):
     name = 'pokedex'
+
     def setup(self, loader):
         interfaces.ChatCommandPlugin.setup(self, loader)
 
@@ -47,36 +44,70 @@ class Plugin(interfaces.ChatCommandPlugin):
 
     def format_thing(self, thing):
         if type(thing) is t.PokemonForm:
-            return self.format_pokemon_form(thing)
+            return self.format_pokemon(thing.species, thing)
         if type(thing) is t.PokemonSpecies:
-            return self.format_pokemon_species(thing)
+            return self.format_pokemon(thing, thing.default_form)
+
         if type(thing) is t.Ability:
             return self.format_ability(thing)
-        if type(thing) is t.Move:
-            return self.format_move(thing)
         if type(thing) is t.Item:
             return self.format_item(thing)
+        if type(thing) is t.Move:
+            return self.format_move(thing)
+        if type(thing) is t.Nature:
+            return self.format_nature(thing)
         if type(thing) is t.Type:
-            return self.format_item(thing)
+            return self.format_type(thing)
+
         return thing.name
 
-    def format_pokemon_form(self, form):
-        return self.format_pokemon_species(form.species)
-        
-    def format_pokemon_species(self, species):
-        return u"#{0.id} {0.name}, the {0.genus} Pokémon.".format(species)
+    def format_pokemon(self, species, form):
+        types = u"/".join(type.name for type in form.pokemon.types)
+        stats = [
+            form.pokemon.base_stat(u'hp'),
+            form.pokemon.base_stat(u'attack'),
+            form.pokemon.base_stat(u'defense'),
+            form.pokemon.base_stat(u'special-attack'),
+            form.pokemon.base_stat(u'special-defense'),
+            form.pokemon.base_stat(u'speed'),
+        ]
+        stat_text = u"{0} HP, {1}/{2} physical, {3}/{4} special, {5} speed".format(*stats)
+        return u"#{0.id} {0.name}, the {0.genus} Pokémon. {types}-type. {stats}; {total} total.".format(
+            species, form, types=types, stats=stat_text, total=sum(stats))
     
-    def format_item(self, item):
-        return u"{0.name}, an item".format(item)
-
     def format_ability(self, ability):
-        return u"{0.name}, an ability".format(ability)
+        return u"{0.name}, an ability. {0.short_effect}".format(ability)
+
+    def format_item(self, item):
+        return u"{0.name}, an item. {0.short_effect}".format(item)
 
     def format_move(self, move):
-        return u"{0.name}, a move".format(move)
+        if move.power is not None:
+            power = "{0.power}".format(move)
+        else:
+            power = "variable"
+
+        if move.accuracy is not None:
+            accuracy = "{0.accuracy}%".format(move)
+        else:
+            accuracy = "perfect"
+
+        if move.damage_class.identifier == 'status':
+            stats = "{0} accuracy".format(accuracy)
+        else:
+            stats = "{0} power; {1} accuracy".format(power, accuracy)
+
+        return u"{0.name}, a {0.type.name}-type move. {stats}; {0.pp} PP. {0.short_effect}".format(
+            move, stats=stats.capitalize())
+
+    def format_nature(self, nature):
+        if nature.is_neutral:
+            return u"{0.name}, a neutral nature.".format(nature)
+        return u"{0.name}, a nature. Raises {0.increased_stat.name}; lowers {0.decreased_stat.name}.".format(nature)
 
     def format_type(self, type):
-        return u"{0.name}, a type".format(type)
+        return u"{0.name}, a type.".format(type)
+
     
     class Dex(interfaces.Command):
         name = 'pokedex'
@@ -96,7 +127,8 @@ class Plugin(interfaces.ChatCommandPlugin):
 
         def command(self, bot, comm, groups):
             self.plugin.lookup.rebuild_index()
-            bot.reply(comm, u"Done")
+            bot.reply(comm, u"Done.")
+
 
 import unittest
 import io
@@ -126,8 +158,40 @@ class HamperPokedexTests(unittest.TestCase):
 
     def test_lookup_pikachu(self):
         response = self.do_lookup("pikachu")
-        self.assertEqual(response, u"#25 Pikachu, the Mouse Pokémon.")
+        self.assertEqual(response, u"#25 Pikachu, the Mouse Pokémon. Electric-type. 35 HP, 55/40 physical, 50/50 special, 90 speed; 320 total.")
 
     def test_lookup_potion(self):
         response = self.do_lookup("potion")
-        self.assertEqual(response, u"Potion, an item")
+        self.assertEqual(response, u"Potion, an item. Restores 20 HP.")
+
+    def test_lookup_neutral_nature(self):
+        response = self.do_lookup("quirky")
+        self.assertEqual(response, u"Quirky, a neutral nature.")
+
+    def test_lookup_nature(self):
+        response = self.do_lookup("modest")
+        self.assertEqual(response, u"Modest, a nature. Raises Special Attack; lowers Attack.")
+
+    def test_lookup_move(self):
+        response = self.do_lookup("pound")
+        self.assertEqual(response, u"Pound, a Normal-type move. 40 power; 100% accuracy; 35 PP. Inflicts regular damage with no additional effect.")
+
+    def test_lookup_status_move(self):
+        response = self.do_lookup("growl")
+        self.assertEqual(response, u"Growl, a Normal-type move. 100% accuracy; 40 PP. Lowers the target's Attack by one stage.")
+
+    def test_lookup_variable_move(self):
+        response = self.do_lookup("psywave")
+        self.assertEqual(response, u"Psywave, a Psychic-type move. Variable power; 100% accuracy; 15 PP. Inflicts damage between 50% and 150% of the user's level.")
+
+    def test_lookup_perfect_accuracy(self):
+        response = self.do_lookup("aerial ace")
+        self.assertEqual(response, u"Aerial Ace, a Flying-type move. 60 power; perfect accuracy; 20 PP. Never misses.")
+
+    def test_lookup_ability(self):
+        response = self.do_lookup("levitate")
+        self.assertEqual(response, u"Levitate, an ability. Evades Ground moves.")
+
+    def test_lookup_type(self):
+        response = self.do_lookup("grass")
+        self.assertEqual(response, u"Grass, a type.")
