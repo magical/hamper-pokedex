@@ -15,7 +15,7 @@ __all__ = ('Plugin',)
 class Plugin(interfaces.ChatCommandPlugin):
     name = 'pokedex'
 
-    base_url = "http://veekun.com/dex"
+    base_url = u"http://veekun.com/dex"
 
     valid_types = [
         u'pokemon_species',
@@ -90,18 +90,18 @@ class Plugin(interfaces.ChatCommandPlugin):
             form.pokemon.base_stat(u'speed'),
         ]
         stat_text = u"{0} HP, {1}/{2} physical, {3}/{4} special, {5} speed".format(*stats)
-        url = urljoin(self.base_url, "pokemon", species.name.lower())
+        url = urljoin(self.base_url, u"pokemon", species.name.lower())
         if not form.pokemon.is_default:
-            url += "?form=" + urllib.quote(form.form_identifier)
+            url += u"?form=" + urlquote(form.form_identifier)
         return u"#{0.id} {1.pokemon.name}, the {0.genus} Pokémon. {types}-type. {stats}; {total} total. {url}".format(
             species, form, types=types, stats=stat_text, total=sum(stats), url=url)
 
     def format_ability(self, ability):
-        url = urljoin(self.base_url, "abilities", ability.name.lower())
+        url = urljoin(self.base_url, u"abilities", ability.name.lower())
         return u"{0.name}, an ability. {0.short_effect} {url}".format(ability, url=url)
 
     def format_item(self, item):
-        url = urljoin(self.base_url, "items", item.pocket.identifier, item.name.lower())
+        url = urljoin(self.base_url, u"items", item.pocket.identifier, item.name.lower())
         return u"{0.name}, an item. {0.short_effect} {url}".format(item, url=url)
 
     def format_move(self, move):
@@ -120,7 +120,7 @@ class Plugin(interfaces.ChatCommandPlugin):
         else:
             stats = "{0} power; {1} accuracy".format(power, accuracy)
 
-        url = urljoin(self.base_url, "moves", move.name.lower())
+        url = urljoin(self.base_url, u"moves", move.name.lower())
         return u"{0.name}, a {0.type.name}-type move. {stats}; {0.pp} PP. {0.short_effect} {url}".format(
             move, stats=stats.capitalize(), url=url)
 
@@ -129,11 +129,11 @@ class Plugin(interfaces.ChatCommandPlugin):
             template = u"{0.name}, a neutral nature. {url}"
         else:
             template = u"{0.name}, a nature. Raises {0.increased_stat.name}; lowers {0.decreased_stat.name}. {url}"
-        url = urljoin(self.base_url, "natures", nature.name.lower())
+        url = urljoin(self.base_url, u"natures", nature.name.lower())
         return template.format(nature, url=url)
 
     def format_type(self, type):
-        url = urljoin(self.base_url, "types", type.name.lower())
+        url = urljoin(self.base_url, u"types", type.name.lower())
         return u"{0.name}, a type. {url}".format(type, url=url)
 
 
@@ -159,7 +159,14 @@ class Plugin(interfaces.ChatCommandPlugin):
             bot.reply(comm, u"Done.")
 
 def urljoin(base, *parts):
-    return "/".join([base] + [urllib.quote(part) for part in parts])
+    return u"/".join([base] + [urlquote(part) for part in parts])
+
+def urlquote(s):
+    """Unicode-safe version of urllib.quote"""
+    if type(s) is unicode:
+        s = s.encode('utf-8')
+    return urllib.quote(s, '').decode('ascii')
+
 
 import unittest
 import io
@@ -190,6 +197,11 @@ class HamperPokedexTests(unittest.TestCase):
     def test_lookup_pikachu(self):
         response = self.do_lookup("pikachu")
         self.assertEqual(response, u"#25 Pikachu, the Mouse Pokémon. Electric-type. 35 HP, 55/40 physical, 50/50 special, 90 speed; 320 total. http://veekun.com/dex/pokemon/pikachu")
+
+    def test_lookup_nidoran(self):
+        "this one is tricky because nidoran has unicode characters in its name"
+        response = self.do_lookup("nidoran♀")
+        self.assertEqual(response, u"#29 Nidoran♀, the Poison Pin Pokémon. Poison-type. 55 HP, 47/52 physical, 40/40 special, 41 speed; 275 total. http://veekun.com/dex/pokemon/nidoran%E2%99%80")
 
     def test_lookup_potion(self):
         response = self.do_lookup("potion")
