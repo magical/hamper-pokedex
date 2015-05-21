@@ -106,19 +106,19 @@ class Plugin(interfaces.ChatCommandPlugin):
 
     def format_move(self, move):
         if move.power is not None:
-            power = "{0.power}".format(move)
+            power = u"{0.power}".format(move)
         else:
-            power = "variable"
+            power = u"variable"
 
         if move.accuracy is not None:
-            accuracy = "{0.accuracy}%".format(move)
+            accuracy = u"{0.accuracy}%".format(move)
         else:
-            accuracy = "perfect"
+            accuracy = u"perfect"
 
         if move.damage_class.identifier == 'status':
-            stats = "{0} accuracy".format(accuracy)
+            stats = u"{0} accuracy".format(accuracy)
         else:
-            stats = "{0} power; {1} accuracy".format(power, accuracy)
+            stats = u"{0} power; {1} accuracy".format(power, accuracy)
 
         url = urljoin(self.base_url, u"moves", move.name.lower())
         return u"{0.name}, a {0.type.name}-type move. {stats}; {0.pp} PP. {0.short_effect} {url}".format(
@@ -200,7 +200,7 @@ class HamperPokedexTests(unittest.TestCase):
 
     def test_lookup_nidoran(self):
         "this one is tricky because nidoran has unicode characters in its name"
-        response = self.do_lookup("nidoran♀")
+        response = self.do_lookup(u"nidoran♀")
         self.assertEqual(response, u"#29 Nidoran♀, the Poison Pin Pokémon. Poison-type. 55 HP, 47/52 physical, 40/40 special, 41 speed; 275 total. http://veekun.com/dex/pokemon/nidoran%E2%99%80")
 
     def test_lookup_potion(self):
