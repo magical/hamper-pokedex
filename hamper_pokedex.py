@@ -140,6 +140,7 @@ class Plugin(interfaces.ChatCommandPlugin):
     class Dex(interfaces.Command):
         name = 'pokedex'
         regex = '(?:dex|pokedex)(?: (.*)|$)'
+        short_desc = u'pokedex or dex [name] - looks up info about a pokemon, move, or item'
 
         def command(self, bot, comm, groups):
             if not groups or not groups[0]:
