@@ -3,6 +3,8 @@
 # Copyright 2015 Andrew Ekstedt
 # NO WARRANTY. See LICENSE for details.
 
+import urllib
+
 from hamper import interfaces
 import pokedex.db
 import pokedex.db.tables as t
@@ -12,6 +14,8 @@ __all__ = ('Plugin',)
 
 class Plugin(interfaces.ChatCommandPlugin):
     name = 'pokedex'
+
+    base_url = "http://veekun.com/dex"
 
     valid_types = [
         u'pokemon_species',
@@ -86,14 +90,19 @@ class Plugin(interfaces.ChatCommandPlugin):
             form.pokemon.base_stat(u'speed'),
         ]
         stat_text = u"{0} HP, {1}/{2} physical, {3}/{4} special, {5} speed".format(*stats)
-        return u"#{0.id} {0.name}, the {0.genus} Pokémon. {types}-type. {stats}; {total} total.".format(
-            species, form, types=types, stats=stat_text, total=sum(stats))
+        url = urljoin(self.base_url, "pokemon", species.name.lower())
+        if not form.pokemon.is_default:
+            url += "?form=" + urllib.quote(form.form_identifier)
+        return u"#{0.id} {1.pokemon.name}, the {0.genus} Pokémon. {types}-type. {stats}; {total} total. {url}".format(
+            species, form, types=types, stats=stat_text, total=sum(stats), url=url)
 
     def format_ability(self, ability):
-        return u"{0.name}, an ability. {0.short_effect}".format(ability)
+        url = urljoin(self.base_url, "abilities", ability.name.lower())
+        return u"{0.name}, an ability. {0.short_effect} {url}".format(ability, url=url)
 
     def format_item(self, item):
-        return u"{0.name}, an item. {0.short_effect}".format(item)
+        url = urljoin(self.base_url, "items", item.pocket.identifier, item.name.lower())
+        return u"{0.name}, an item. {0.short_effect} {url}".format(item, url=url)
 
     def format_move(self, move):
         if move.power is not None:
@@ -111,16 +120,21 @@ class Plugin(interfaces.ChatCommandPlugin):
         else:
             stats = "{0} power; {1} accuracy".format(power, accuracy)
 
-        return u"{0.name}, a {0.type.name}-type move. {stats}; {0.pp} PP. {0.short_effect}".format(
-            move, stats=stats.capitalize())
+        url = urljoin(self.base_url, "moves", move.name.lower())
+        return u"{0.name}, a {0.type.name}-type move. {stats}; {0.pp} PP. {0.short_effect} {url}".format(
+            move, stats=stats.capitalize(), url=url)
 
     def format_nature(self, nature):
         if nature.is_neutral:
-            return u"{0.name}, a neutral nature.".format(nature)
-        return u"{0.name}, a nature. Raises {0.increased_stat.name}; lowers {0.decreased_stat.name}.".format(nature)
+            template = u"{0.name}, a neutral nature. {url}"
+        else:
+            template = u"{0.name}, a nature. Raises {0.increased_stat.name}; lowers {0.decreased_stat.name}. {url}"
+        url = urljoin(self.base_url, "natures", nature.name.lower())
+        return template.format(nature, url=url)
 
     def format_type(self, type):
-        return u"{0.name}, a type.".format(type)
+        url = urljoin(self.base_url, "types", type.name.lower())
+        return u"{0.name}, a type. {url}".format(type, url=url)
 
 
     class Dex(interfaces.Command):
@@ -143,6 +157,8 @@ class Plugin(interfaces.ChatCommandPlugin):
             self.plugin.lookup.rebuild_index()
             bot.reply(comm, u"Done.")
 
+def urljoin(base, *parts):
+    return "/".join([base] + [urllib.quote(part) for part in parts])
 
 import unittest
 import io
@@ -172,40 +188,40 @@ class HamperPokedexTests(unittest.TestCase):
 
     def test_lookup_pikachu(self):
         response = self.do_lookup("pikachu")
-        self.assertEqual(response, u"#25 Pikachu, the Mouse Pokémon. Electric-type. 35 HP, 55/40 physical, 50/50 special, 90 speed; 320 total.")
+        self.assertEqual(response, u"#25 Pikachu, the Mouse Pokémon. Electric-type. 35 HP, 55/40 physical, 50/50 special, 90 speed; 320 total. http://veekun.com/dex/pokemon/pikachu")
 
     def test_lookup_potion(self):
         response = self.do_lookup("potion")
-        self.assertEqual(response, u"Potion, an item. Restores 20 HP.")
+        self.assertEqual(response, u"Potion, an item. Restores 20 HP. http://veekun.com/dex/items/medicine/potion")
 
     def test_lookup_neutral_nature(self):
         response = self.do_lookup("quirky")
-        self.assertEqual(response, u"Quirky, a neutral nature.")
+        self.assertEqual(response, u"Quirky, a neutral nature. http://veekun.com/dex/natures/quirky")
 
     def test_lookup_nature(self):
         response = self.do_lookup("modest")
-        self.assertEqual(response, u"Modest, a nature. Raises Special Attack; lowers Attack.")
+        self.assertEqual(response, u"Modest, a nature. Raises Special Attack; lowers Attack. http://veekun.com/dex/natures/modest")
 
     def test_lookup_move(self):
         response = self.do_lookup("pound")
-        self.assertEqual(response, u"Pound, a Normal-type move. 40 power; 100% accuracy; 35 PP. Inflicts regular damage with no additional effect.")
+        self.assertEqual(response, u"Pound, a Normal-type move. 40 power; 100% accuracy; 35 PP. Inflicts regular damage with no additional effect. http://veekun.com/dex/moves/pound")
 
     def test_lookup_status_move(self):
         response = self.do_lookup("growl")
-        self.assertEqual(response, u"Growl, a Normal-type move. 100% accuracy; 40 PP. Lowers the target's Attack by one stage.")
+        self.assertEqual(response, u"Growl, a Normal-type move. 100% accuracy; 40 PP. Lowers the target's Attack by one stage. http://veekun.com/dex/moves/growl")
 
     def test_lookup_variable_move(self):
         response = self.do_lookup("psywave")
-        self.assertEqual(response, u"Psywave, a Psychic-type move. Variable power; 100% accuracy; 15 PP. Inflicts damage between 50% and 150% of the user's level.")
+        self.assertEqual(response, u"Psywave, a Psychic-type move. Variable power; 100% accuracy; 15 PP. Inflicts damage between 50% and 150% of the user's level. http://veekun.com/dex/moves/psywave")
 
     def test_lookup_perfect_accuracy(self):
         response = self.do_lookup("aerial ace")
-        self.assertEqual(response, u"Aerial Ace, a Flying-type move. 60 power; perfect accuracy; 20 PP. Never misses.")
+        self.assertEqual(response, u"Aerial Ace, a Flying-type move. 60 power; perfect accuracy; 20 PP. Never misses. http://veekun.com/dex/moves/aerial%20ace")
 
     def test_lookup_ability(self):
         response = self.do_lookup("levitate")
-        self.assertEqual(response, u"Levitate, an ability. Evades Ground moves.")
+        self.assertEqual(response, u"Levitate, an ability. Evades Ground moves. http://veekun.com/dex/abilities/levitate")
 
     def test_lookup_type(self):
         response = self.do_lookup("grass")
-        self.assertEqual(response, u"Grass, a type.")
+        self.assertEqual(response, u"Grass, a type. http://veekun.com/dex/types/grass")
