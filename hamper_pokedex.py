@@ -9,8 +9,33 @@ from hamper import interfaces
 import pokedex.db
 import pokedex.db.tables as t
 import pokedex.lookup
+from sqlalchemy import sql
 
 __all__ = ('Plugin',)
+
+def red(s):    return u"\x0304"+s+u"\x0F"
+def purple(s): return u"\x0306"+s+u"\x0F"
+def orange(s): return u"\x0307"+s+u"\x0F"
+def yellow(s): return u"\x0308"+s+u"\x0F"
+def lime(s):   return u"\x0309"+s+u"\x0F"
+def cyan(s):   return u"\x0311"+s+u"\x0F"
+def blue(s):   return u"\x0312"+s+u"\x0F"
+def pink(s):   return u"\x0313"+s+u"\x0F"
+
+def color(n):
+    if n < .15:
+        return purple
+    if n < .30:
+        return blue
+    if n < .45:
+        return cyan
+    if n < .60:
+        return lime
+    if n < .75:
+        return yellow
+    if n < .90:
+        return orange
+    return red
 
 class Plugin(interfaces.ChatCommandPlugin):
     name = 'pokedex'
@@ -26,6 +51,20 @@ class Plugin(interfaces.ChatCommandPlugin):
         u'nature',
         u'type',
     ]
+
+    gender_ratio_text = {
+        -1: u"Genderless",
+
+        0: blue(u"Male♂")+u" only",
+        8: pink(u"Female♀")+u" only",
+        1: u"Predominantly "+blue(u"male♂"),
+        7: u"Predominantly "+pink(u"female♀"),
+        2: u"Mostly "+blue(u"male♂"),
+        6: u"Mostly "+pink(u"female♀"),
+        3: u"⅜ female♀, ⅝ male♂", # never occurs
+        5: u"⅝ female♀, ⅜ male♂", # never occurs
+        4: u"Half "+pink(u"female♀")+u", half "+blue(u"male♂"),
+    }
 
     def setup(self, loader):
         interfaces.ChatCommandPlugin.setup(self, loader)
@@ -80,21 +119,44 @@ class Plugin(interfaces.ChatCommandPlugin):
         return thing.name
 
     def format_pokemon(self, species, form):
-        types = u"/".join(type.name for type in form.pokemon.types)
-        stats = [
-            form.pokemon.base_stat(u'hp'),
-            form.pokemon.base_stat(u'attack'),
-            form.pokemon.base_stat(u'defense'),
-            form.pokemon.base_stat(u'special-attack'),
-            form.pokemon.base_stat(u'special-defense'),
-            form.pokemon.base_stat(u'speed'),
-        ]
-        stat_text = u"{0} HP, {1}/{2} physical, {3}/{4} special, {5} speed".format(*stats)
+        template = (
+            u"#{0.id} {1.pokemon.name}, the {0.genus} Pokémon.  {types}-type.  {gender_ratio}.  " +
+            u"Has {abilities}.  " +
+            u"{stats}; {total} total.  " +
+            u"Egg groups: {egg_groups}.  Hatch counter: {0.hatch_counter}.  " +
+            u"{url}"
+        )
+        extra = {}
+
+        q = self.session.query(t.PokemonStat).join(t.Stat)
+        stat_idents = [u'hp', u'attack', u'defense', u'special-attack', u'special-defense', u'speed']
+        stats = [form.pokemon.base_stat(ident) for ident in stat_idents]
+        percentiles = [get_percentile(q.filter(t.Stat.identifier == ident), t.PokemonStat.base_stat, stat)
+                       for ident, stat in zip(stat_idents, stats)]
+        colored_stats = [color(pct)(unicode(stat)) for pct, stat in zip(percentiles, stats)]
+        total_subquery = q.filter(~t.Stat.is_battle_only).group_by(t.PokemonStat.pokemon_id)\
+            .with_entities(sql.func.sum(t.PokemonStat.base_stat).label('base_stat_total')).subquery()
+        total_percentile = get_percentile(
+            self.session.query(total_subquery),
+            total_subquery.c.base_stat_total,
+            sum(stats),
+        )
+        #print(percentiles)
+        #print(total_percentile)
+
+        extra["types"] = u"/".join(type.name for type in form.pokemon.types)
+        extra["abilities"] = u" or ".join(ability.name for ability in form.pokemon.abilities)
+        extra["stats"] = u"{0} HP, {1}/{2} physical, {3}/{4} special, {5} speed".format(*colored_stats)
+        extra["total"] = color(total_percentile)(unicode(sum(stats)))
+        extra["gender_ratio"] = self.gender_ratio_text[species.gender_rate]
+        extra["egg_groups"] = u" and ".join(sorted(egg_group.name for egg_group in species.egg_groups))
+
         url = urljoin(self.base_url, u"pokemon", species.name.lower())
         if not form.pokemon.is_default:
             url += u"?form=" + urlquote(form.form_identifier)
-        return u"#{0.id} {1.pokemon.name}, the {0.genus} Pokémon. {types}-type. {stats}; {total} total. {url}".format(
-            species, form, types=types, stats=stat_text, total=sum(stats), url=url)
+        extra["url"] = url
+
+        return template.format(species, form, **extra)
 
     def format_ability(self, ability):
         url = urljoin(self.base_url, u"abilities", ability.name.lower())
@@ -158,6 +220,14 @@ class Plugin(interfaces.ChatCommandPlugin):
             self.plugin.lookup.rebuild_index()
             bot.reply(comm, u"Done.")
 
+def get_percentile(q, column, value):
+    def oneif(expr):
+        return sql.case([(expr, 1)], else_=0)
+    less = sql.func.sum(oneif(column < value))
+    equal = sql.func.sum(oneif(column == value))
+    total = sql.func.count(column)
+    return float(q.value((less + equal*0.5) / total))
+
 def urljoin(base, *parts):
     return u"/".join([base] + [urlquote(part) for part in parts])
 
@@ -168,8 +238,12 @@ def urlquote(s):
     return urllib.quote(s, '').decode('ascii')
 
 
-import unittest
 import io
+import unittest
+import re
+
+def strip_colors(s):
+    return re.sub(u"\x03[0-9][0-9]|\x0F", u"", s)
 
 class MockLoader:
     config = {}
@@ -183,6 +257,7 @@ class MockBot:
         self.response.write(message)
 
 class HamperPokedexTests(unittest.TestCase):
+    maxDiff = None
     def setUp(self):
         # TODO: db configuration
         self.loader = MockLoader()
@@ -192,16 +267,16 @@ class HamperPokedexTests(unittest.TestCase):
 
     def do_lookup(self, query):
         self.plugin.do_lookup(self.bot, {}, query)
-        return self.bot.response.getvalue()
+        return strip_colors(self.bot.response.getvalue())
 
     def test_lookup_pikachu(self):
         response = self.do_lookup("pikachu")
-        self.assertEqual(response, u"#25 Pikachu, the Mouse Pokémon. Electric-type. 35 HP, 55/40 physical, 50/50 special, 90 speed; 320 total. http://veekun.com/dex/pokemon/pikachu")
+        self.assertEqual(response, u"#25 Pikachu, the Mouse Pokémon.  Electric-type.  Half female♀, half male♂.  Has Static.  35 HP, 55/40 physical, 50/50 special, 90 speed; 320 total.  Egg groups: Fairy and Field.  Hatch counter: 10.  http://veekun.com/dex/pokemon/pikachu")
 
     def test_lookup_nidoran(self):
         "this one is tricky because nidoran has unicode characters in its name"
         response = self.do_lookup(u"nidoran♀")
-        self.assertEqual(response, u"#29 Nidoran♀, the Poison Pin Pokémon. Poison-type. 55 HP, 47/52 physical, 40/40 special, 41 speed; 275 total. http://veekun.com/dex/pokemon/nidoran%E2%99%80")
+        self.assertEqual(response, u"#29 Nidoran♀, the Poison Pin Pokémon.  Poison-type.  Female♀ only.  Has Poison Point or Rivalry.  55 HP, 47/52 physical, 40/40 special, 41 speed; 275 total.  Egg groups: Field and Monster.  Hatch counter: 20.  http://veekun.com/dex/pokemon/nidoran%E2%99%80")
 
     def test_lookup_potion(self):
         response = self.do_lookup("potion")
