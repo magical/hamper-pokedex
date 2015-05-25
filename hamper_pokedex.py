@@ -176,7 +176,7 @@ class Plugin(interfaces.ChatCommandPlugin):
         extra["stats"] = u"{0} HP, {1}/{2} physical, {3}/{4} special, {5} speed".format(*colored_stats)
         extra["total"] = color(total_percentile)(unicode(sum(stats)))
         extra["gender_ratio"] = self.gender_ratio_text[species.gender_rate]
-        extra["egg_groups"] = u" and ".join(sorted(egg_group.name for egg_group in species.egg_groups))
+        extra["egg_groups"] = namelist(species.egg_groups, u" and ")
 
         url = urljoin(self.base_url, u"pokemon", species.name.lower())
         if not form.pokemon.is_default:
@@ -222,8 +222,39 @@ class Plugin(interfaces.ChatCommandPlugin):
         return template.format(nature, url=url)
 
     def format_type(self, type):
+        damage_taken = defaultdict(list)
+        damage_given = defaultdict(list)
+        for efficacy in type.damage_efficacies:
+            damage_given[efficacy.damage_factor].append(efficacy.target_type)
+        for efficacy in type.target_efficacies:
+            damage_taken[efficacy.damage_factor].append(efficacy.damage_type)
+
+        del damage_taken[100]
+        del damage_given[100]
+
+        text = u""
+        if damage_given:
+            clauses = []
+            if damage_given[200]:
+                clauses.append(u"2× to " + namelist(damage_given[200]))
+            if damage_given[50]:
+                clauses.append(u"½× to " + namelist(damage_given[50]))
+            if damage_given[0]:
+                clauses.append(u"0× to " + namelist(damage_given[0]))
+            text += u".  Deals " + u"; ".join(clauses)
+
+        if damage_taken:
+            clauses = []
+            if damage_taken[200]:
+                clauses.append(u"2× from " + namelist(damage_taken[200]))
+            if damage_taken[50]:
+                clauses.append(u"½× from " + namelist(damage_taken[50]))
+            if damage_taken[0]:
+                clauses.append(u"0× from " + namelist(damage_taken[0]))
+            text += u".  Takes " + u"; ".join(clauses)
+
         url = urljoin(self.base_url, u"types", type.name.lower())
-        return u"{0.name}, a type. {url}".format(type, url=url)
+        return u"{0.name}, a type{text}.  {url}".format(type, text=text, url=url)
 
 
     class Dex(interfaces.Command):
@@ -294,6 +325,10 @@ def get_percentile(q, column, value):
     equal = sql.func.sum(oneif(column == value))
     total = sql.func.count(column)
     return float(q.value((less + equal*0.5) / total))
+
+def namelist(list, sep=u", "):
+    """Format a list of objects as a sorted, comma-separated list of their names."""
+    return sep.join(sorted(x.name for x in list))
 
 def urljoin(base, *parts):
     """Append parts of a URL to a base, quoted and separated by slashes."""
@@ -380,4 +415,4 @@ class HamperPokedexTests(unittest.TestCase):
 
     def test_lookup_type(self):
         response = self.do_lookup("grass")
-        self.assertEqual(response, u"Grass, a type. http://veekun.com/dex/types/grass")
+        self.assertEqual(response, u"Grass, a type.  Deals 2× to Ground, Rock, Water; ½× to Bug, Dragon, Fire, Flying, Grass, Poison, Steel.  Takes 2× from Bug, Fire, Flying, Ice, Poison; ½× from Electric, Grass, Ground, Water.  http://veekun.com/dex/types/grass")
