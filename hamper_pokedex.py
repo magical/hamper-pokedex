@@ -3,6 +3,7 @@
 # Copyright 2015 Andrew Ekstedt
 # NO WARRANTY. See LICENSE for details.
 
+from collections import defaultdict
 import urllib
 
 from hamper import interfaces
@@ -13,6 +14,7 @@ from sqlalchemy import sql
 
 __all__ = ('Plugin',)
 
+# TODO: Something more declarative
 def red(s):    return u"\x0304"+s+u"\x0F"
 def purple(s): return u"\x0306"+s+u"\x0F"
 def orange(s): return u"\x0307"+s+u"\x0F"
@@ -40,10 +42,14 @@ def color(n):
 class Plugin(interfaces.ChatCommandPlugin):
     name = 'pokedex'
 
+    # Base URL for spline-pokedex.
+    # In case you wanted to run your own instance, i guess.
     base_url = u"http://veekun.com/dex"
 
+    # The version group to use for level-up moves.
     current_version_group = u'x-y'
 
+    # What types of things do we want to search for?
     valid_types = [
         u'pokemon_species',
         u'pokemon_form',
@@ -66,6 +72,16 @@ class Plugin(interfaces.ChatCommandPlugin):
         3: u"⅜ female♀, ⅝ male♂", # never occurs
         5: u"⅝ female♀, ⅜ male♂", # never occurs
         4: u"Half "+pink(u"female♀")+u", half "+blue(u"male♂"),
+
+        # Other options that were considered:
+        #
+        #     Fractions: 1/8 female, 7/8 male
+        #
+        #     Unicode fractions: ⅛ female, ⅞ male
+        #
+        #     Ratio: 1 ♀ : 7 ♂
+        #
+        #     Bar chart: ♀♀♀♀♀♀♀♂
     }
 
     def setup(self, loader):
@@ -270,7 +286,8 @@ class Plugin(interfaces.ChatCommandPlugin):
         return u"{1.pokemon.name}: {2}.".format(species, form, move_text)
 
 def get_percentile(q, column, value):
-    """Return the percent of columns in a query which are less than the given value."""
+    """Return the percent of rows in a query in which the
+    given column is less than the given value."""
     def oneif(expr):
         return sql.case([(expr, 1)], else_=0)
     less = sql.func.sum(oneif(column < value))
@@ -279,6 +296,7 @@ def get_percentile(q, column, value):
     return float(q.value((less + equal*0.5) / total))
 
 def urljoin(base, *parts):
+    """Append parts of a URL to a base, quoted and separated by slashes."""
     return u"/".join([base] + [urlquote(part) for part in parts])
 
 def urlquote(s):
