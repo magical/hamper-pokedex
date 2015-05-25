@@ -57,10 +57,10 @@ class Plugin(interfaces.ChatCommandPlugin):
 
         0: blue(u"Male♂")+u" only",
         8: pink(u"Female♀")+u" only",
-        1: u"Predominantly "+blue(u"male♂"),
-        7: u"Predominantly "+pink(u"female♀"),
-        2: u"Mostly "+blue(u"male♂"),
-        6: u"Mostly "+pink(u"female♀"),
+        1: u"Predominantly "+blue(u"male♂")+u" (7:1)",
+        7: u"Predominantly "+pink(u"female♀")+u" (7:1)",
+        2: u"Mostly "+blue(u"male♂")+u" (3:1)",
+        6: u"Mostly "+pink(u"female♀")+u" (3:1)",
         3: u"⅜ female♀, ⅝ male♂", # never occurs
         5: u"⅝ female♀, ⅜ male♂", # never occurs
         4: u"Half "+pink(u"female♀")+u", half "+blue(u"male♂"),
