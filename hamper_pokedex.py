@@ -42,6 +42,8 @@ class Plugin(interfaces.ChatCommandPlugin):
 
     base_url = u"http://veekun.com/dex"
 
+    current_version_group = u'x-y'
+
     valid_types = [
         u'pokemon_species',
         u'pokemon_form',
@@ -79,25 +81,34 @@ class Plugin(interfaces.ChatCommandPlugin):
             session=self.session,
         )
 
-    def do_lookup(self, bot, comm, query):
+
+    def _lookup(self, bot, comm, query):
         if type(query) is str:
             query = query.decode('utf-8', 'replace')
+
         try:
             results = self.lookup.lookup(query, valid_types=self.valid_types)
         except pokedex.lookup.UninitializedIndex.UninitializedIndexError:
-            return bot.reply(comm, u"error: the lookup index does not exist. type !reindex to create it.")
+            bot.reply(comm, u"error: the lookup index does not exist. type !reindex to create it.")
+            return None
 
         if len(results) == 0:
-            return bot.reply(comm, u"I don't know what that is")
+            bot.reply(comm, u"I don't know what that is")
+            return None
 
         if len(results) > 1:
             suggestions = []
             for r in results:
                 suggestions.append(r.name)
-            return bot.reply(comm, u"did you mean {0}", vars=[", ".join(suggestions)])
+            bot.reply(comm, u"did you mean {0}", vars=[", ".join(suggestions)])
+            return None
 
-        thing = results[0].object
-        bot.reply(comm, u"{0}", vars=[self.format_thing(thing)])
+        return results[0].object
+
+    def do_lookup(self, bot, comm, query):
+        thing = self._lookup(bot, comm, query)
+        if thing:
+            bot.reply(comm, u"{0}", vars=[self.format_thing(thing)])
 
     def format_thing(self, thing):
         if type(thing) is t.PokemonForm:
@@ -220,7 +231,46 @@ class Plugin(interfaces.ChatCommandPlugin):
             self.plugin.lookup.rebuild_index()
             bot.reply(comm, u"Done.")
 
+    class Levelup(interfaces.Command):
+        name = 'levelup'
+        regex = 'levelup(?: (.*)|$)'
+        short_desc = u'levelup [pokemon] - show level-up moves for a pokemon'
+
+        def command(self, bot, comm, groups):
+            if not groups or not groups[0]:
+                return bot.reply(comm, u"Please specify a pokemon to look up")
+            query = groups[0].strip()
+            self.plugin.do_levelup(bot, comm, query)
+
+    def do_levelup(self, bot, comm, query):
+        thing = self._lookup(bot, comm, query)
+        if not thing:
+            return
+
+        if type(thing) is t.PokemonSpecies:
+            species = thing
+            form = thing.default_form
+        elif type(thing) is t.PokemonForm:
+            species = thing.species
+            form = thing
+        else:
+            return bot.reply(comm, u"that isn't a pokemon")
+
+        bot.reply(comm, u"{0}", vars=[self.format_levelup_moves(species, form)])
+
+    def format_levelup_moves(self, species, form):
+        q = self.session.query(t.PokemonMove)
+        q = q.filter_by(pokemon_id = form.pokemon_id)
+        q = q.join(t.VersionGroup).filter_by(identifier=self.current_version_group)
+        q = q.join(t.PokemonMoveMethod).filter_by(identifier=u'level-up')
+        q = q.order_by(t.PokemonMove.level)
+
+        move_text = u"; ".join(u"{0.level}. {0.move.name}".format(pokemove) for i, pokemove in enumerate(q.all()))
+
+        return u"{1.pokemon.name}: {2}.".format(species, form, move_text)
+
 def get_percentile(q, column, value):
+    """Return the percent of columns in a query which are less than the given value."""
     def oneif(expr):
         return sql.case([(expr, 1)], else_=0)
     less = sql.func.sum(oneif(column < value))
