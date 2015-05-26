@@ -39,7 +39,19 @@ def color(n):
         return orange
     return red
 
-class Plugin(interfaces.ChatCommandPlugin):
+class Help:
+    def __init__(self, name, short_desc, long_desc=u""):
+        self.name = name
+        self.short_desc = short_desc
+        self.long_desc = long_desc
+
+class Trigger:
+    def __init__(self, regex, cmd, directed=True):
+        self.regex = regex
+        self.cmd = cmd
+        self.directed = directed
+
+class Plugin(interfaces.ChatPlugin):
     name = 'pokedex'
 
     # Base URL for spline-pokedex.
@@ -85,7 +97,8 @@ class Plugin(interfaces.ChatCommandPlugin):
     }
 
     def setup(self, loader):
-        interfaces.ChatCommandPlugin.setup(self, loader)
+        self.commands = [] # actually help, for the help plugin
+        self.triggers = [] # commands
 
         self.config = loader.config.get("pokedex", {})
         uri = self.config.get('db')
@@ -97,10 +110,45 @@ class Plugin(interfaces.ChatCommandPlugin):
             session=self.session,
         )
 
+        self.add_help(u'dex', u'pokedex or dex [name] - looks up info about a pokemon, move, or item')
+        self.add_help(u'reindex', u'reindex - rebuilds the pokedex search index')
+        self.add_help(u'levelup', u'levelup [pokemon] - show level-up moves for a pokemon')
+
+        self.add_trigger(ur'reindex', self.cmd_reindex)
+        self.add_trigger(ur'(?:dex|pokedex)(?:| (.*))', self.cmd_lookup)
+        self.add_trigger(ur'levelup(?:| (.*))', self.cmd_levelup)
+
+    def add_help(self, name, short_desc, long_desc=u""):
+        self.commands.append(Help(name, short_desc, long_desc))
+
+    def add_trigger(self, regex, cmd):
+        if isinstance(regex, basestring):
+            regex = re.compile(regex, re.IGNORECASE)
+        self.triggers.append(Trigger(regex, cmd))
+
+    def message(self, bot, comm):
+        for trigger in self.triggers:
+            m = trigger.regex.match(comm['message'])
+            if m is not None:
+                trigger.cmd(bot, comm, m.groups())
+                return True
+        return False
+
+    def cmd_reindex(self, bot, comm, groups):
+        self.lookup.rebuild_index()
+        bot.reply(comm, u"Done.")
 
     def _lookup(self, bot, comm, query):
         if type(query) is str:
             query = query.decode('utf-8', 'replace')
+        elif query is None:
+            query = u""
+
+        query = query.strip()
+
+        if not query:
+            bot.reply(comm, u"please specify a pokemon to look up")
+            return None
 
         try:
             results = self.lookup.lookup(query, valid_types=self.valid_types)
@@ -121,7 +169,8 @@ class Plugin(interfaces.ChatCommandPlugin):
 
         return results[0].object
 
-    def do_lookup(self, bot, comm, query):
+    def cmd_lookup(self, bot, comm, groups):
+        query, = groups
         thing = self._lookup(bot, comm, query)
         if thing:
             bot.reply(comm, u"{0}", vars=[self.format_thing(thing)])
@@ -256,40 +305,8 @@ class Plugin(interfaces.ChatCommandPlugin):
         url = urljoin(self.base_url, u"types", type.name.lower())
         return u"{0.name}, a type{text}.  {url}".format(type, text=text, url=url)
 
-
-    class Dex(interfaces.Command):
-        name = 'pokedex'
-        regex = '(?:dex|pokedex)(?: (.*)|$)'
-        short_desc = u'pokedex or dex [name] - looks up info about a pokemon, move, or item'
-
-        def command(self, bot, comm, groups):
-            if not groups or not groups[0]:
-                return bot.reply(comm, u"Please specify a pokemon to look up")
-
-            query = groups[0].strip()
-            self.plugin.do_lookup(bot, comm, query)
-
-    class Reindex(interfaces.Command):
-        name = 'reindex'
-        regex = 'reindex'
-        short_desc = u'reindex - rebuilds the pokedex search index'
-
-        def command(self, bot, comm, groups):
-            self.plugin.lookup.rebuild_index()
-            bot.reply(comm, u"Done.")
-
-    class Levelup(interfaces.Command):
-        name = 'levelup'
-        regex = 'levelup(?: (.*)|$)'
-        short_desc = u'levelup [pokemon] - show level-up moves for a pokemon'
-
-        def command(self, bot, comm, groups):
-            if not groups or not groups[0]:
-                return bot.reply(comm, u"Please specify a pokemon to look up")
-            query = groups[0].strip()
-            self.plugin.do_levelup(bot, comm, query)
-
-    def do_levelup(self, bot, comm, query):
+    def cmd_levelup(self, bot, comm, groups):
+        query, = groups
         thing = self._lookup(bot, comm, query)
         if not thing:
             return
@@ -361,16 +378,21 @@ class MockBot:
 
 class HamperPokedexTests(unittest.TestCase):
     maxDiff = None
+
     def setUp(self):
         # TODO: db configuration
         self.loader = MockLoader()
         self.plugin = Plugin()
         self.plugin.setup(self.loader)
-        self.bot = MockBot()
 
     def do_lookup(self, query):
-        self.plugin.do_lookup(self.bot, {}, query)
-        return strip_colors(self.bot.response.getvalue())
+        bot = MockBot()
+        self.plugin.cmd_lookup(bot, {}, (query,))
+        return strip_colors(bot.response.getvalue())
+
+    def test_lookup_nothing(self):
+        self.assertEqual(self.do_lookup(None), u"please specify a pokemon to look up")
+        self.assertEqual(self.do_lookup(""), u"please specify a pokemon to look up")
 
     def test_lookup_pikachu(self):
         response = self.do_lookup("pikachu")
@@ -393,6 +415,7 @@ class HamperPokedexTests(unittest.TestCase):
         response = self.do_lookup("modest")
         self.assertEqual(response, u"Modest, a nature. Raises Special Attack; lowers Attack. http://veekun.com/dex/natures/modest")
 
+
     def test_lookup_move(self):
         response = self.do_lookup("pound")
         self.assertEqual(response, u"Pound, a Normal-type move. 40 power; 100% accuracy; 35 PP. Inflicts regular damage with no additional effect. http://veekun.com/dex/moves/pound")
@@ -405,9 +428,10 @@ class HamperPokedexTests(unittest.TestCase):
         response = self.do_lookup("psywave")
         self.assertEqual(response, u"Psywave, a Psychic-type move. Variable power; 100% accuracy; 15 PP. Inflicts damage between 50% and 150% of the user's level. http://veekun.com/dex/moves/psywave")
 
-    def test_lookup_perfect_accuracy(self):
+    def test_lookup_perfect_accuracy_move(self):
         response = self.do_lookup("aerial ace")
         self.assertEqual(response, u"Aerial Ace, a Flying-type move. 60 power; perfect accuracy; 20 PP. Never misses. http://veekun.com/dex/moves/aerial%20ace")
+
 
     def test_lookup_ability(self):
         response = self.do_lookup("levitate")
