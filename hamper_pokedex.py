@@ -127,6 +127,8 @@ class Plugin(interfaces.ChatPlugin):
         self.triggers.append(Trigger(regex, cmd))
 
     def message(self, bot, comm):
+        if not comm['directed']:
+            return False
         for trigger in self.triggers:
             m = trigger.regex.match(comm['message'])
             if m is not None:
