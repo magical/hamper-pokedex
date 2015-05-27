@@ -114,9 +114,9 @@ class Plugin(interfaces.ChatPlugin):
         self.add_help(u'reindex', u'reindex - rebuilds the pokedex search index')
         self.add_help(u'levelup', u'levelup [pokemon] - show level-up moves for a pokemon')
 
-        self.add_trigger(ur'reindex', self.cmd_reindex)
-        self.add_trigger(ur'(?:dex|pokedex)(?:| (.*))', self.cmd_lookup)
-        self.add_trigger(ur'levelup(?:| (.*))', self.cmd_levelup)
+        self.add_trigger(ur'reindex$', self.cmd_reindex)
+        self.add_trigger(ur'(?:dex|pokedex)(?:| (.*))$', self.cmd_lookup)
+        self.add_trigger(ur'levelup(?:| (.*))$', self.cmd_levelup)
 
     def add_help(self, name, short_desc, long_desc=u""):
         self.commands.append(Help(name, short_desc, long_desc))
