@@ -132,7 +132,10 @@ class Plugin(interfaces.ChatPlugin):
         for trigger in self.triggers:
             m = trigger.regex.match(comm['message'])
             if m is not None:
-                trigger.cmd(bot, comm, m.groups())
+                try:
+                    trigger.cmd(bot, comm, m.groups())
+                finally:
+                    self.session.remove()
                 return True
         return False
 
